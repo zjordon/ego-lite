@@ -161,3 +161,34 @@ gate.withSpace(spaceId)                 ← 经 NativeOperationGate 串行化
 | 会话失效包装 | `src/index.ts:200-224` |
 | 空间选择串行化 | `src/native-gate.ts` |
 | agent 侧使用规范 | `skill-body/SKILL.md`（"User control and completion" 节） |
+
+## 附录 A：外部层（CDP）可实现性分析
+
+> 回答"这种机制是不是只能在浏览器层实现"。判据一句话：**要区分的信息诞生在哪一层，完美处理就得在哪一层。**
+
+### A.1 可以在 CDP/外部层实现的能力
+
+| 能力 | 外部实现方式 | 说明 |
+|---|---|---|
+| 控制权状态机 + 命令闸门 | 外部 harness 自己就是全部 CDP 流量的**唯一出口**，在客户端里实现同款状态机反而更简单 | ego 把执法点放原生桥不是为了技术必要，而是收益最大化（见 A.3） |
+| 用户操作检测 | `Page.addScriptToEvaluateOnNewDocument` 注入捕获阶段监听（pointerdown / wheel / keydown） | **关键坑**：CDP 注入的输入 `isTrusted` 也是 `true`（走同一输入管线），不能靠 isTrusted 区分——要用"agent 派发前打标记、事件回调里查标记"的相关性法：不在自己派发窗口内的输入 = 真人。有竞态窗口但可控 |
+| 反向锁（agent 专属模式） | `Input.setIgnoreInputEvents(true)` 让浏览器忽略物理输入 | ego 不用这个方向（允许用户随时插手），但外部工具可拿来做"agent 作业中"模式 |
+| 状态跨 agent 进程持久 | 常驻 daemon 持有状态（如 TreeWalker 的 BrowserSession 角色） | ego 用浏览器进程本体当 daemon |
+| JS 对话框处理 | `Page.javascriptDialogOpening` 事件原生就在 CDP 里 | ego 特意**不**把 JS 对话框算进控制权（独立通道），这个设计本身是对的 |
+| 界面状态指示（近似） | 注入 fixed 定位 DOM overlay（"当前由 Agent 控制"横幅），不少 agent 框架即此做法 | 体验打折，见 A.2 第 3 条 |
+
+### A.2 难以/无法外部复刻的能力（引擎层的护城河）
+
+| 能力 | 为什么外部做不到 | 细节 |
+|---|---|---|
+| **权限提示统一进控制协议**（reason 键体系） | 权限提示是浏览器 UI 层的东西：外部 CDP 客户端收不到"提示已弹出"的事件，也不能把决定权交还用户 | `Browser.grantPermissions` 走**自动授权**（Playwright 模式），"只有用户能决定"的语义直接丢失。ego 能把 location/camera/manual_takeover 塞进同一错误码协议，因为提示诞生在它自己家里 |
+| **输入源头的零竞态区分** | 物理输入与协议注入的**分叉点在浏览器输入管线内部** | 引擎在那儿一目了然（`manual_takeover` 即时）；外部只能靠时间窗相关性启发式，存在误判窗口。实践够用，但非结构性正确 |
+| **原生级常显 UI** | 页面 DOM 内的指示器不可信 | 页面可能还在加载、CSP 与注入样式打架、全屏视频盖住 overlay、每个标签页要各自注入。ego 的指示在窗口 chrome / Space 层，永远可见全局一致；agent 光标可视化（带动作 label 的可见鼠标）同理 |
+| **Space 与真实 profile 共享**（附带） | "agent 在自己空间干活但用真实登录态"两头占 | 外部 `Target.createBrowserContext` 能隔离但不能共享真实 profile 的 cookie 存储；直连用户在用的 Chrome 则失去隔离 |
+
+### A.3 结论
+
+**功能等价可以外部做到，体验等价做不到。** 状态机、闸门、检测、持久化、近似 UI，一个标准的"daemon + 注入监听 + CDP 客户端闸门 + overlay 横幅"外部栈今天就能拼出来。
+
+ego 把执法点放原生桥的收益拆解：**不是必须，而是三份白嫖**——逐命令检查的零开销、浏览器进程长存（天然 daemon）、与权限系统同源（reason 键才可能统一）。对外部实现者而言，最值得抄的是它的**协议设计**（reason 键体系 + 错误信息内嵌恢复脚本的"给 LLM 的协议"），而不是实现位置——协议设计才是框架无关的。
+
