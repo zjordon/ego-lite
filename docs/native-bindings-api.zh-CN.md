@@ -300,7 +300,7 @@ manual_takeover
 原因键必须回落到通用的用户控制引导。
 
 页面自身弹出的 JavaScript 对话框不得走这条用户控制路径；参见
-[原生 JavaScript 对话框需求](native-javascript-dialog-requirement.md)。
+[原生 JavaScript 对话框需求](native-javascript-dialog-requirement.zh-CN.md)。
 
 ## 快照
 
