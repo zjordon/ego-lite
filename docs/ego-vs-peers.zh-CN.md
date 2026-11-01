@@ -37,7 +37,7 @@
 | 控制流归属 | 两层：阶段间 LLM 决策 + 阶段内脚本确定性代码 | LLM（每步往返） | 两层（同为代码执行形态） | 两层：框架预写循环（重试/等待/校验/恢复）+ LLM 每步一个决策 |
 | 观察层 | 引擎侧 AXTree 精简投影 | CDP 原始 DOM/AX 采集后序列化精简 | 截图优先，现场写 Python 过滤 | 原始 DOM 多源采集 + 多步过滤后编号（browser-use：三源采集、五步过滤） |
 | token 经济学 | 省往返 + 省快照 | 每步一往返，观察靠后处理 | 过滤成本转嫁 LLM，截图贵 | 动作空间自有优化 |
-| 进程模型 | 每轮 spawn ~300ms | 常驻，零 spawn | 常驻/低频 | 常驻 loop |
+| 进程模型 | 每轮 spawn ~300ms | 常驻，零 spawn | 每轮脚本进程 + 常驻 daemon 保会话 | 常驻 loop |
 | 人机控制权 | **引擎级，四要素俱全** | 弱概念：有弹窗类 CDP 接口（handle_dialog），让权靠 LLM 自觉 | 无（仅有"如何操作弹窗"的 UI 技法） | 页面级检测，够不到浏览器 chrome |
 
 ## 3. 逐条展开
@@ -84,7 +84,7 @@
 | LLM 往返 | 每个动作一次 | 整个脚本一次 |
 | **合计** | spawn 免费，LLM 大付 | spawn 付费，LLM 大省 |
 
-净赚成立的前提是"脚本内多步"；密集短交互场景会亏（此时可走 loop 内嵌路线：一个 `ego-browser nodejs` 进程常驻、spawn 归零，jev-ego 与 90s 生存实验均已验证）。连官方 daemon 也在付同样的每轮 spawn 成本（createEgoBrowserCli 串行队列）。
+净赚成立的前提是"脚本内多步"；密集短交互场景会亏。两条出路：**loop 内嵌**（一个 `ego-browser nodejs` 进程常驻、spawn 归零，jev-ego 与 90s 生存实验均已验证），或 **daemon 保会话 + 每轮薄进程**（browser-harness 的 ensure_daemon 即此构型——每轮只付脚本进程启动，CDP 会话由常驻 daemon 持有；jev-ego 的 serve 与官方 ego daemon 亦收敛于此）。连官方 daemon 也在付同样的每轮 spawn 成本（createEgoBrowserCli 串行队列）。
 
 ### 3.5 人机控制权切换（结构性优势，其它项目难以复制）
 
